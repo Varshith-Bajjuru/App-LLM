@@ -8,7 +8,6 @@ exports.saveChat = async (req, res) => {
         .status(400)
         .json({ message: "Prompt and response are required" });
     }
-
     const chat = new Chat({ prompt, response });
     await chat.save();
 

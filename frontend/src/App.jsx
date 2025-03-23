@@ -10,27 +10,31 @@ import Sidebar from "./components/Sidebar";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import { AuthContext } from "./context/AuthContext";
+import Header from "./components/header/Header";
+import Footer from "./components/footer/Footer";
+import Home from "./components/home/Home";
 
 const App = () => {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const { sidebarOpen, setSidebarOpen } = useContext(SidebarContext);
   const { user } = useContext(AuthContext);
+  const maxMessagesPerSession = 20;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Fetch chat history
   useEffect(() => {
     if (!user) return;
 
     async function fetchChatHistory() {
       try {
         const response = await fetch("http://localhost:5000/api/history", {
-          credentials: "include", // Include cookies in the request
+          credentials: "include",
         });
         const data = await response.json();
         const history = data.map((chat) => [
@@ -46,12 +50,32 @@ const App = () => {
     fetchChatHistory();
   }, [user]);
 
+  const handleNewChat = () => {
+    if (messages.length > 0) {
+      const existingSessionIndex = chatSessions.findIndex(
+        (session) => JSON.stringify(session) === JSON.stringify(messages)
+      );
+
+      if (existingSessionIndex === -1) {
+        const updatedSessions = [...chatSessions, messages];
+        setChatSessions(updatedSessions);
+        localStorage.setItem("chatSessions", JSON.stringify(updatedSessions));
+      }
+    }
+    setMessages([]);
+  };
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!user) {
       return <Navigate to="/login" />;
     }
     if (!prompt.trim()) return;
+
+    if (messages.length >= maxMessagesPerSession) {
+      alert("Chat limit reached. Please start a new chat.");
+      return;
+    }
 
     const newMessages = [
       ...messages,
@@ -83,7 +107,6 @@ const App = () => {
           { text: botReply, isUser: false, timestamp: new Date() },
         ]);
 
-        // Save chat history to the backend
         await fetch("http://localhost:5000/api/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -102,15 +125,21 @@ const App = () => {
 
   return (
     <Router>
+      <Header />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route
           path="/"
           element={
-            user ? ( // Only render the chat page if the user is authenticated
+            user ? (
               <div className="flex flex-col h-screen bg-gray-900 text-white">
-                <Sidebar />
+                <Sidebar
+                  onNewChat={handleNewChat}
+                  chatSessions={chatSessions}
+                  setChatSessions={setChatSessions}
+                  setMessages={setMessages}
+                />
 
                 <div className="flex-1 flex flex-col">
                   <header className="text-center text-xl font-bold py-4 bg-gray-800 shadow-md">
@@ -169,11 +198,12 @@ const App = () => {
                 </div>
               </div>
             ) : (
-              <Navigate to="/login" />
+              <Home />
             )
           }
         />
       </Routes>
+      <Footer />
     </Router>
   );
 };
