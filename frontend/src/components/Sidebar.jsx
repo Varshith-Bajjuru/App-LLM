@@ -1,74 +1,99 @@
 import React, { useContext } from "react";
 import { SidebarContext } from "../context/SidebarContext";
 
-const Sidebar = ({ onNewChat, chatSessions, setChatSessions, setMessages }) => {
+const Sidebar = ({
+  onNewChat,
+  chatSessions,
+  setChatSessions,
+  setMessages,
+  handleLoadChat,
+  handleDeleteChat,
+}) => {
   const { sidebarOpen, setSidebarOpen } = useContext(SidebarContext);
-  const maxMessagesPerSession = 20;
-
-  const handleNewChat = () => {
-    onNewChat();
-  };
-
-  const handleDeleteChat = (index) => {
-    const updatedSessions = chatSessions.filter((_, i) => i !== index);
-    setChatSessions(updatedSessions);
-    localStorage.setItem("chatSessions", JSON.stringify(updatedSessions));
-  };
-
-  const handleLoadChat = (index) => {
-    const selectedSession = chatSessions[index];
-    if (selectedSession.length < maxMessagesPerSession) {
-      setMessages(selectedSession);
-    } else {
-      alert(
-        "This chat session has reached the maximum message limit. Please start a new chat."
-      );
-    }
-  };
 
   return (
     <div
-      className={`w-64 bg-gray-800 p-4 transform transition-transform fixed h-full ${
+      className={`w-[260px] bg-gray-800 h-screen flex flex-col transform transition-transform fixed ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <button
-        onClick={() => setSidebarOpen(false)}
-        className="absolute top-4 right-4 text-gray-400 hover:text-white"
-      >
-        ✕
-      </button>
-
-      <h2 className="text-lg font-bold mb-4">LLM Performance</h2>
-      <div className="text-sm">
-        <p>Response Time: 0.5s</p>
-        <p>API Usage: 10/1000 requests</p>
+      <div className="header p-3 flex justify-between items-center border-b border-gray-700">
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="close-button p-2 hover:bg-gray-700 rounded-lg text-gray-300 hover:text-white"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+        <button
+          onClick={onNewChat}
+          className="new-chat-button p-2 hover:bg-gray-700 rounded-lg text-gray-300 hover:text-white"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+        </button>
       </div>
-      <h2 className="text-lg font-bold mt-6">Chat History</h2>
-      <ul className="text-sm">
-        {chatSessions.map((session, index) => (
-          <li key={index} className="mb-2 flex justify-between items-center">
-            <button
-              onClick={() => handleLoadChat(index)}
-              className="text-gray-300 hover:text-white"
-            >
-              Chat Session {index + 1}
-            </button>
-            <button
-              onClick={() => handleDeleteChat(index)}
-              className="text-red-500 hover:text-red-700"
-            >
-              🗑️
-            </button>
-          </li>
+
+      <div className="chat-history flex-1 overflow-y-auto p-3">
+        {Object.entries(chatSessions).map(([category, sessions]) => (
+          <div key={category}>
+            <h3 className="text-xs font-semibold mb-2 text-gray-400">
+              {category}
+            </h3>
+            <ul>
+              {sessions.map((session, index) => (
+                <li
+                  key={index}
+                  className="chat-item p-2 hover:bg-gray-700 rounded-lg flex justify-between items-center text-gray-300 hover:text-white"
+                >
+                  <button
+                    onClick={() => handleLoadChat(session)}
+                    className="flex-1 text-left"
+                  >
+                    Chat Session {index + 1}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteChat(index, category)} // Use handleDeleteChat
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    🗑️
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
-      <button
-        onClick={handleNewChat}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md mt-4"
-      >
-        New Chat
-      </button>
+      </div>
+
+      <div className="upgrade-plan p-3 border-t border-gray-700">
+        <button className="upgrade-button p-2 w-full hover:bg-gray-700 rounded-lg text-gray-300 hover:text-white">
+          <span>Upgrade Plan</span>
+        </button>
+      </div>
     </div>
   );
 };
