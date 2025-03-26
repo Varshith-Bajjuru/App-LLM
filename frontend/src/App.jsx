@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useContext,
+  useCallback,
+} from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -13,25 +19,49 @@ import { AuthContext } from "./context/AuthContext";
 import Header from "./components/header/Header";
 import Footer from "./components/footer/Footer";
 import Home from "./components/home/Home";
+import { debounce } from "lodash";
 
 const App = () => {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
   const [chatSessions, setChatSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStates, setLoadingStates] = useState({
+    saving: false,
+    deleting: false,
+    loadingChat: false,
+    creatingChat: false,
+  });
+  const [error, setError] = useState(null);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [isNewChat, setIsNewChat] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
   const messagesEndRef = useRef(null);
   const { sidebarOpen, setSidebarOpen } = useContext(SidebarContext);
   const { user } = useContext(AuthContext);
   const maxMessagesPerSession = 20;
+  const isInitialMount = useRef(true);
+  const [wsReconnectAttempts, setWsReconnectAttempts] = useState(0);
+  const wsRef = useRef(null);
+
+  const debouncedUpdateSessions = useRef(
+    debounce((newSessions) => {
+      setChatSessions(newSessions);
+    }, 300)
+  ).current;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setMessages([]);
+      setChatSessions([]);
+      return;
+    }
 
-    async function fetchChatHistory() {
+    const fetchChatHistory = async () => {
       try {
         const response = await fetch("http://localhost:5000/api/history", {
           credentials: "include",
@@ -40,11 +70,13 @@ const App = () => {
 
         if (Array.isArray(data)) {
           const history = data.map((chat) => ({
-            messages: [
+            id: chat._id || chat.timestamp,
+            messages: chat.messages || [
               { text: chat.prompt, isUser: true, timestamp: chat.timestamp },
               { text: chat.response, isUser: false, timestamp: chat.timestamp },
             ],
             timestamp: chat.timestamp,
+            title: chat.title || chat.prompt?.slice(0, 30) || "New Chat",
           }));
           setChatSessions(history);
         } else {
@@ -55,124 +87,81 @@ const App = () => {
         console.error("Error fetching chat history:", error);
         setChatSessions([]);
       }
-    }
-
-    fetchChatHistory();
-  }, [user]);
-
-  const handleNewChat = () => {
-    if (messages.length > 0) {
-      const existingSessionIndex = chatSessions.findIndex(
-        (session) =>
-          JSON.stringify(session.messages) === JSON.stringify(messages)
-      );
-
-      if (existingSessionIndex === -1) {
-        const newSession = {
-          messages: messages,
-          timestamp: new Date().toISOString(),
-        };
-        const updatedSessions = [...chatSessions, newSession];
-        setChatSessions(updatedSessions);
-        localStorage.setItem("chatSessions", JSON.stringify(updatedSessions));
-      }
-    }
-    setMessages([]);
-  };
-
-  const handleLoadChat = (session) => {
-    if (session.messages.length < maxMessagesPerSession) {
-      const updatedSession = {
-        ...session,
-        timestamp: new Date().toISOString(),
-      };
-      const updatedSessions = chatSessions.map((s) =>
-        s.timestamp === session.timestamp ? updatedSession : s
-      );
-      setChatSessions(updatedSessions);
-      localStorage.setItem("chatSessions", JSON.stringify(updatedSessions));
-
-      setMessages(session.messages);
-    } else {
-      alert(
-        "This chat session has reached the maximum message limit. Please start a new chat."
-      );
-    }
-  };
-
-  const handleDeleteChat = (index, category) => {
-    const groupedSessions = groupChatSessionsByDate(chatSessions);
-
-    if (
-      !groupedSessions[category] ||
-      !Array.isArray(groupedSessions[category])
-    ) {
-      console.error(`Category "${category}" is invalid or not an array.`);
-      return;
-    }
-
-    groupedSessions[category] = groupedSessions[category].filter(
-      (_, i) => i !== index
-    );
-
-    const updatedSessions = Object.values(groupedSessions).flat();
-
-    setChatSessions(updatedSessions);
-    localStorage.setItem("chatSessions", JSON.stringify(updatedSessions));
-  };
-
-  const groupChatSessionsByDate = (sessions) => {
-    let sessionsArray = sessions;
-    if (sessions && typeof sessions === "object" && !Array.isArray(sessions)) {
-      sessionsArray = Object.values(sessions);
-    }
-    if (!Array.isArray(sessionsArray)) {
-      console.error("sessions is not an array:", sessions);
-      return {
-        Today: [],
-        Yesterday: [],
-        "Last 5 Days": [],
-        Previous: [],
-      };
-    }
-
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const groupedSessions = {
-      Today: [],
-      Yesterday: [],
-      "Last 5 Days": [],
-      Previous: [],
     };
 
-    sessionsArray.forEach((session) => {
-      const sessionDate = new Date(session.timestamp);
-      if (sessionDate.toDateString() === today.toDateString()) {
-        groupedSessions.Today.push(session);
-      } else if (sessionDate.toDateString() === yesterday.toDateString()) {
-        groupedSessions.Yesterday.push(session);
-      } else if (sessionDate > new Date(today.setDate(today.getDate() - 5))) {
-        groupedSessions["Last 5 Days"].push(session);
-      } else {
-        groupedSessions.Previous.push(session);
-      }
-    });
+    fetchChatHistory();
 
-    return groupedSessions;
-  };
+    const setupWebSocket = () => {
+      const ws = new WebSocket(`ws://localhost:5000/ws`);
+      wsRef.current = ws;
 
-  const groupedSessions = groupChatSessionsByDate(chatSessions);
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        setConnectionError(false);
+        setWsReconnectAttempts(0);
+      };
 
-  async function handleSubmit(e) {
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "CHAT_UPDATE") {
+            if (message.data.action === "SAVE") {
+              if (message.data.chat.id !== activeSessionId) {
+                debouncedUpdateSessions((prev) => {
+                  if (message.data.chat.messages.length === 0) return prev;
+                  const exists = prev.some(
+                    (c) => c.id === message.data.chat.id
+                  );
+                  return exists
+                    ? prev.map((c) =>
+                        c.id === message.data.chat.id ? message.data.chat : c
+                      )
+                    : [message.data.chat, ...prev].filter(
+                        (s) => s.messages.length > 0
+                      );
+                });
+              }
+            } else if (message.data.action === "DELETE") {
+              debouncedUpdateSessions((prev) =>
+                prev.filter((c) => c.id !== message.data.id)
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Error processing WebSocket message:", error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setConnectionError(true);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket disconnected");
+        setConnectionError(true);
+
+        const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
+        setTimeout(() => {
+          setWsReconnectAttempts((prev) => prev + 1);
+          connectWebSocket();
+        }, delay);
+      };
+    };
+
+    setupWebSocket();
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      debouncedUpdateSessions.cancel();
+    };
+  }, [user, activeSessionId, debouncedUpdateSessions]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user) {
-      return <Navigate to="/login" />;
-    }
+    if (!user) return;
     if (!prompt.trim()) return;
 
-    if (messages.length >= maxMessagesPerSession) {
+    if (messages.length >= maxMessagesPerSession * 2) {
       alert("Chat limit reached. Please start a new chat.");
       return;
     }
@@ -182,7 +171,9 @@ const App = () => {
       isUser: true,
       timestamp: new Date().toISOString(),
     };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setPrompt("");
     setIsLoading(true);
 
@@ -199,59 +190,173 @@ const App = () => {
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
       const data = await response.json();
 
-      if (data.candidates && data.candidates.length > 0) {
-        const botReply = data.candidates[0].content.parts[0].text;
-        const botMessage = {
-          text: botReply,
-          isUser: false,
-          timestamp: new Date().toISOString(),
-        };
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error("Invalid response format from API");
+      }
 
-        setMessages((prevMessages) => [...prevMessages, botMessage]);
+      const botReply = data.candidates[0].content.parts[0].text;
+      const botMessage = {
+        text: botReply,
+        isUser: false,
+        timestamp: new Date().toISOString(),
+      };
 
-        // Save chat to backend
-        try {
-          await fetch("http://localhost:5000/api/save", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              prompt: userMessage.text,
-              response: botReply,
-            }),
-            credentials: "include",
-          });
-        } catch (saveError) {
-          console.warn("Error saving chat history:", saveError);
-        }
-      } else {
-        console.error("Unexpected API response:", data);
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            text: "An error occurred. Please try again later.",
-            isUser: false,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+      const finalMessages = [...updatedMessages, botMessage];
+      setMessages(finalMessages);
+
+      setLoadingStates((prev) => ({ ...prev, saving: true }));
+
+      // Save to backend with current session ID
+      const saveResponse = await fetch("http://localhost:5000/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: userMessage.text,
+          response: botReply,
+          sessionId: activeSessionId || null,
+        }),
+        credentials: "include",
+      });
+
+      const saveData = await saveResponse.json();
+
+      if (saveData.isNew) {
+        setActiveSessionId(saveData.sessionId);
+        setIsNewChat(false);
       }
     } catch (error) {
-      console.error("Error submitting message:", error);
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          text: "An error occurred. Please try again later.",
-          isUser: false,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      console.error("Error:", error);
+      setMessages((prev) =>
+        prev.filter((m) => m.timestamp !== userMessage.timestamp)
+      );
+      setError({
+        message: "Failed to send message",
+        details: error.message,
+        retry: () => handleSubmit(e),
+      });
     } finally {
       setIsLoading(false);
+      setLoadingStates((prev) => ({ ...prev, saving: false }));
     }
-  }
+  };
+
+  const groupChatSessionsByDate = useCallback((sessions) => {
+    const sessionsArray = Array.isArray(sessions) ? sessions : [];
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const lastFiveDays = new Date(today);
+    lastFiveDays.setDate(today.getDate() - 5);
+
+    const groupedSessions = {
+      Today: [],
+      Yesterday: [],
+      "Last 5 Days": [],
+      Previous: [],
+    };
+
+    const sortedSessions = [...sessionsArray].sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    );
+
+    sortedSessions.forEach((session) => {
+      const sessionDate = new Date(session.timestamp);
+      if (sessionDate.toDateString() === today.toDateString()) {
+        groupedSessions.Today.push(session);
+      } else if (sessionDate.toDateString() === yesterday.toDateString()) {
+        groupedSessions.Yesterday.push(session);
+      } else if (sessionDate > lastFiveDays) {
+        groupedSessions["Last 5 Days"].push(session);
+      } else {
+        groupedSessions.Previous.push(session);
+      }
+    });
+
+    return groupedSessions;
+  }, []);
+
+  const handleNewChat = () => {
+    if (messages.length > 0) {
+      const newSession = {
+        id: Date.now().toString(),
+        messages: [...messages],
+        timestamp: new Date().toISOString(),
+        title: messages[0]?.text?.slice(0, 30) || "New Chat",
+      };
+      setChatSessions((prev) => [newSession, ...prev]);
+    }
+    setMessages([]);
+    setActiveSessionId(null);
+    setIsNewChat(true);
+  };
+
+  const handleLoadChat = (session) => {
+    if (session.messages.length >= maxMessagesPerSession * 2) {
+      alert(
+        "This chat session has reached the maximum message limit. Please start a new chat."
+      );
+      return;
+    }
+    setActiveSessionId(session.id);
+    setMessages(session.messages);
+    setIsNewChat(false);
+  };
+  const handleDeleteChat = async (index, category) => {
+    const groupedSessions = groupChatSessionsByDate(chatSessions);
+    const sessionToDelete = groupedSessions[category][index];
+
+    // Optimistically update UI
+    setChatSessions((prev) => prev.filter((s) => s.id !== sessionToDelete.id));
+
+    if (activeSessionId === sessionToDelete.id) {
+      setMessages([]);
+      setActiveSessionId(null);
+    }
+
+    setLoadingStates((prev) => ({ ...prev, deleting: true }));
+
+    try {
+      const response = await fetch("http://localhost:5000/api/delete", {
+        method: "POST", // Changed from DELETE to POST
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: sessionToDelete.id, // Changed from 'id' to 'sessionId'
+        }),
+        credentials: "include",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        // Revert UI if delete failed
+        setChatSessions((prev) =>
+          [...prev, sessionToDelete].sort(
+            (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+          )
+        );
+
+        throw new Error(data.message || "Failed to delete chat");
+      }
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      setError({
+        message: "Failed to delete chat",
+        details: error.message,
+        retry: () => handleDeleteChat(index, category),
+      });
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, deleting: false }));
+    }
+  };
+  const groupedSessions = groupChatSessionsByDate(chatSessions);
 
   return (
     <Router>
@@ -267,14 +372,15 @@ const App = () => {
                 <Sidebar
                   onNewChat={handleNewChat}
                   chatSessions={groupedSessions}
-                  setChatSessions={setChatSessions}
-                  setMessages={setMessages}
                   handleLoadChat={handleLoadChat}
                   handleDeleteChat={handleDeleteChat}
+                  loadingStates={loadingStates}
+                  activeSessionId={activeSessionId}
+                  isNewChat={isNewChat && messages.length === 0}
                 />
 
                 <div className="flex-1 flex flex-col">
-                  <header className="text-center text-xl font-bold py-4 bg-gray-800 shadow-md">
+                  <header className="sticky top-0 z-10 text-center text-xl font-bold py-4 bg-gray-800 shadow-md">
                     <button
                       onClick={() => setSidebarOpen(!sidebarOpen)}
                       className="absolute left-4"
@@ -282,51 +388,97 @@ const App = () => {
                       ☰
                     </button>
                     Chat App
+                    {connectionError && (
+                      <span className="text-xs text-yellow-400 ml-2">
+                        (Connection issues)
+                      </span>
+                    )}
                   </header>
-                  <div className="flex-1 flex items-center justify-center max-h-177">
-                    <div className="w-full max-w-full h-5/6 overflow-y-auto bg-gray-800 rounded-lg p-6 shadow-md custom-scrollbar">
-                      {messages.map((message, i) => (
-                        <div
-                          key={i}
-                          className={`p-3 my-2 rounded-3xl max-w-xl ${
-                            message.isUser
-                              ? "bg-blue-500 text-white self-end ml-auto"
-                              : "bg-gray-700 text-gray-200 self-start"
-                          }`}
-                        >
-                          <div>{message.text}</div>
-                          <div className="text-xs text-gray-400 mt-1">
-                            {new Date(message.timestamp).toLocaleTimeString()}
-                          </div>
+                  {error && (
+                    <div className="fixed bottom-4 right-4 bg-red-800 p-3 rounded-lg shadow-lg max-w-md z-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold">{error.message}</h3>
+                          <p className="text-sm">{error.details}</p>
                         </div>
-                      ))}
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={error.retry}
+                            className="px-2 py-1 bg-red-700 rounded"
+                          >
+                            Retry
+                          </button>
+                          <button
+                            onClick={() => setError(null)}
+                            className="px-2 py-1 bg-gray-600 rounded"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="max-w-4xl mx-auto p-4">
+                      {messages.length === 0 && !isLoading ? (
+                        <div className="text-center text-gray-500 py-10">
+                          Start a new conversation
+                        </div>
+                      ) : (
+                        messages.map((message, i) => (
+                          <div
+                            key={`${message.timestamp}-${i}`}
+                            className={`mb-4 ${message.isUser ? "text-right" : "text-left"}`}
+                          >
+                            <div
+                              className={`inline-block p-3 rounded-lg max-w-3xl ${
+                                message.isUser
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-gray-700 text-gray-200"
+                              }`}
+                            >
+                              <div className="whitespace-pre-wrap">
+                                {message.text}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                {new Date(
+                                  message.timestamp
+                                ).toLocaleTimeString()}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
                       {isLoading && (
-                        <div className="p-3 my-2 rounded-3xl max-w-xl bg-gray-700 text-gray-200 self-start">
+                        <div className="p-3 my-2 rounded-lg max-w-3xl bg-gray-700 text-gray-200">
                           Typing...
                         </div>
                       )}
                       <div ref={messagesEndRef} />
                     </div>
                   </div>
-                  <form
-                    onSubmit={handleSubmit}
-                    className="p-3 flex gap-3 bg-gray-800 shadow-lg"
-                  >
-                    <input
-                      type="text"
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder="Type here..."
-                      className="flex-1 p-2 bg-gray-700 text-white rounded-md outline-none text-sm"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition font-bold text-sm"
-                      disabled={isLoading}
+                  <div className="sticky bottom-0 bg-gray-800 p-4 border-t border-gray-700">
+                    <form
+                      onSubmit={handleSubmit}
+                      className="flex gap-3 max-w-4xl mx-auto"
                     >
-                      Send
-                    </button>
-                  </form>
+                      <input
+                        type="text"
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder="Type your message..."
+                        className="flex-1 p-2 bg-gray-700 text-white rounded-md outline-none"
+                        disabled={isLoading || loadingStates.saving}
+                      />
+                      <button
+                        type="submit"
+                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition disabled:opacity-50"
+                        disabled={isLoading || loadingStates.saving}
+                      >
+                        {loadingStates.saving ? "Saving..." : "Send"}
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </div>
             ) : (

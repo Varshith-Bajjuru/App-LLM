@@ -2,18 +2,14 @@ const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
-// Register a new user
 exports.register = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
-
-    // Create a new user
     const user = new User({ email, password });
     await user.save();
 
@@ -23,7 +19,6 @@ exports.register = async (req, res) => {
   }
 };
 
-// Login user
 exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -33,19 +28,16 @@ exports.login = async (req, res) => {
     }
 
     const accessToken = jwt.sign(
-      { id: user._id },
+      { id: user._id }, // Make sure this is included
       process.env.JWT_ACCESS_TOKEN,
-      {
-        expiresIn: "15m",
-      }
+      { expiresIn: "15m" }
     );
     const refreshToken = jwt.sign(
-      { id: user._id },
+      { id: user._id }, // And here
       process.env.JWT_REFRESH_TOKEN,
-      {
-        expiresIn: "7d",
-      }
+      { expiresIn: "7d" }
     );
+
     user.refreshToken = refreshToken;
     await user.save();
 
@@ -63,7 +55,7 @@ exports.login = async (req, res) => {
 
     res.status(200).json({ user: { id: user._id, email: user.email } });
   } catch (error) {
-    res.status(500).json({ message: "Error logging in", error });
+    res.status(500).json({ message: "Error logging in", error: error.message });
   }
 };
 
