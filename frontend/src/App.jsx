@@ -39,7 +39,7 @@ const App = () => {
   const messagesEndRef = useRef(null);
   const { sidebarOpen, setSidebarOpen } = useContext(SidebarContext);
   const { user } = useContext(AuthContext);
-  const maxMessagesPerSession = 20;
+  const maxMessagesPerSession = 1000;
   const isInitialMount = useRef(true);
   const [wsReconnectAttempts, setWsReconnectAttempts] = useState(0);
   const wsRef = useRef(null);
@@ -180,7 +180,7 @@ const App = () => {
     try {
       const apiKey = import.meta.env.VITE_API_KEY;
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBTE5nbRalwoPhHs11chKCxfblfIBpg8vM`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -212,7 +212,7 @@ const App = () => {
 
       setLoadingStates((prev) => ({ ...prev, saving: true }));
 
-      // Save to backend with current session ID
+
       const saveResponse = await fetch("http://localhost:5000/api/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -309,53 +309,80 @@ const App = () => {
   };
   const handleDeleteChat = async (index, category) => {
     const groupedSessions = groupChatSessionsByDate(chatSessions);
+  
+    // Check if category exists in groupedSessions
+    if (!groupedSessions[category] || !groupedSessions[category][index]) {
+      console.error("Invalid category or index");
+      return;
+    }
+  
     const sessionToDelete = groupedSessions[category][index];
-
-    // Optimistically update UI
+  
+    // Update UI by removing the deleted session
     setChatSessions((prev) => prev.filter((s) => s.id !== sessionToDelete.id));
-
+  
+    // If the active session is deleted, clear messages and set active session to null
     if (activeSessionId === sessionToDelete.id) {
       setMessages([]);
       setActiveSessionId(null);
     }
-
+  
     setLoadingStates((prev) => ({ ...prev, deleting: true }));
-
+  
     try {
       const response = await fetch("http://localhost:5000/api/delete", {
-        method: "POST", // Changed from DELETE to POST
+        method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sessionId: sessionToDelete.id, // Changed from 'id' to 'sessionId'
+          sessionId: sessionToDelete.id,
         }),
         credentials: "include",
       });
-
+  
       const data = await response.json();
-
+  
       if (!response.ok || !data.success) {
-        // Revert UI if delete failed
         setChatSessions((prev) =>
           [...prev, sessionToDelete].sort(
             (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
           )
         );
-
+  
         throw new Error(data.message || "Failed to delete chat");
       }
     } catch (error) {
       console.error("Error deleting chat:", error);
+  
       setError({
         message: "Failed to delete chat",
         details: error.message,
-        retry: () => handleDeleteChat(index, category),
+        retry: async () => {
+          const maxRetries = 3; // Set a retry limit if needed
+          let retries = 0;
+  
+          while (retries < maxRetries) {
+            retries++;
+            try {
+              await handleDeleteChat(index, category);
+              return; // If successful, break out of the loop
+            } catch (err) {
+              console.log(`Retry attempt ${retries} failed`);
+            }
+          }
+          setError((prev) => ({
+            ...prev,
+            message: "Max retry attempts reached. Please try again later.",
+          }));
+        },
       });
     } finally {
       setLoadingStates((prev) => ({ ...prev, deleting: false }));
     }
-  };
+};
+
+  
   const groupedSessions = groupChatSessionsByDate(chatSessions);
 
   return (
@@ -368,7 +395,7 @@ const App = () => {
           path="/"
           element={
             user ? (
-              <div className="flex flex-col h-screen bg-gray-900 text-white">
+              <div className="flex flex-col h-full min-h-screen bg-gray-900 text-white">
                 <Sidebar
                   onNewChat={handleNewChat}
                   chatSessions={groupedSessions}
@@ -380,10 +407,10 @@ const App = () => {
                 />
 
                 <div className="flex-1 flex flex-col">
-                  <header className="sticky top-0 z-10 text-center text-xl font-bold py-4 bg-gray-800 shadow-md">
+                  <header className="sticky top-0 z-10 flex items-center justify-center text-xl font-bold py-4 bg-gray-800 shadow-md">
                     <button
                       onClick={() => setSidebarOpen(!sidebarOpen)}
-                      className="absolute left-4"
+                      className="absolute left-4 text-white focus:outline-none"
                     >
                       ☰
                     </button>
@@ -394,6 +421,7 @@ const App = () => {
                       </span>
                     )}
                   </header>
+
                   {error && (
                     <div className="fixed bottom-4 right-4 bg-red-800 p-3 rounded-lg shadow-lg max-w-md z-50">
                       <div className="flex justify-between items-start">
@@ -404,13 +432,13 @@ const App = () => {
                         <div className="flex gap-2 ml-4">
                           <button
                             onClick={error.retry}
-                            className="px-2 py-1 bg-red-700 rounded"
+                            className="px-2 py-1 bg-red-700 rounded hover:bg-red-600"
                           >
                             Retry
                           </button>
                           <button
                             onClick={() => setError(null)}
-                            className="px-2 py-1 bg-gray-600 rounded"
+                            className="px-2 py-1 bg-gray-600 rounded hover:bg-gray-500"
                           >
                             Dismiss
                           </button>
@@ -418,10 +446,11 @@ const App = () => {
                       </div>
                     </div>
                   )}
+
                   <div className="flex-1 overflow-y-auto">
                     <div className="max-w-4xl mx-auto p-4">
                       {messages.length === 0 && !isLoading ? (
-                        <div className="text-center text-gray-500 py-10">
+                        <div className="text-center text-gray-400 py-10">
                           Start a new conversation
                         </div>
                       ) : (
@@ -431,7 +460,7 @@ const App = () => {
                             className={`mb-4 ${message.isUser ? "text-right" : "text-left"}`}
                           >
                             <div
-                              className={`inline-block p-3 rounded-lg max-w-3xl ${
+                              className={`inline-block p-3 rounded-lg max-w-3xl transition duration-300 shadow-md ${
                                 message.isUser
                                   ? "bg-blue-600 text-white"
                                   : "bg-gray-700 text-gray-200"
@@ -457,6 +486,7 @@ const App = () => {
                       <div ref={messagesEndRef} />
                     </div>
                   </div>
+
                   <div className="sticky bottom-0 bg-gray-800 p-4 border-t border-gray-700">
                     <form
                       onSubmit={handleSubmit}
@@ -467,7 +497,7 @@ const App = () => {
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         placeholder="Type your message..."
-                        className="flex-1 p-2 bg-gray-700 text-white rounded-md outline-none"
+                        className="flex-1 p-2 bg-gray-700 text-white rounded-md outline-none focus:ring focus:ring-blue-500"
                         disabled={isLoading || loadingStates.saving}
                       />
                       <button

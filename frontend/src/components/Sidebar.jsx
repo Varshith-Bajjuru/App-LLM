@@ -27,7 +27,7 @@ const Sidebar = ({
 
   return (
     <div
-      className={`w-[260px] bg-gray-800 h-screen flex flex-col transform transition-transform duration-300 fixed ${
+      className={`w-[260px] bg-gray-800 min-h-screen h-full flex flex-col transform transition-transform duration-300 fixed ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       } z-10`}
     >
