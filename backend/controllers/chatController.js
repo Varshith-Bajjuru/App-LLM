@@ -117,25 +117,44 @@ exports.getHistory = async (req, res) => {
 
 exports.deleteChat = async (req, res) => {
   try {
-    const { sessionId } = req.body; // Changed from 'id' to 'sessionId'
+    const { sessionId } = req.body;
 
-    const result = await Chat.deleteOne({
-      sessionId,
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "sessionId is required",
+      });
+    }
+
+    console.log(
+      `Attempting to delete chat session: ${sessionId} for user: ${req.user.id}`
+    );
+
+    // First check if the chat exists and is owned by the user
+    const chat = await Chat.findOne({
+      sessionId: sessionId,
       userId: req.user.id,
     });
 
-    if (result.deletedCount === 0) {
+    if (!chat) {
+      console.log(`Chat session not found or not owned by user: ${sessionId}`);
       return res.status(404).json({
         success: false,
         message: "Chat session not found or not owned by user",
       });
     }
 
+    // Then proceed with deletion
+    await Chat.deleteOne({ _id: chat._id });
+
+    console.log(`Successfully deleted chat session: ${sessionId}`);
+
+    // Broadcast the deletion via WebSocket
     if (req.app.locals.broadcastUpdate) {
       req.app.locals.broadcastUpdate({
         action: "DELETE",
         sessionId: sessionId,
-        userId: req.user.id,
+        userId: req.user.id.toString(),
       });
     }
 

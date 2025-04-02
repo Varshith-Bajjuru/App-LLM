@@ -20,6 +20,7 @@ import Header from "./components/header/Header";
 import Footer from "./components/footer/Footer";
 import Home from "./components/home/Home";
 import { debounce } from "lodash";
+import { isMedicalQuery } from "./utils/medicalDetector";
 
 const App = () => {
   const [prompt, setPrompt] = useState("");
@@ -32,10 +33,12 @@ const App = () => {
     loadingChat: false,
     creatingChat: false,
   });
+  const [deletingSessionIds, setDeletingSessionIds] = useState(new Set());
   const [error, setError] = useState(null);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [isNewChat, setIsNewChat] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
+  const [fallbackToGemini, setFallbackToGemini] = useState(false);
   const messagesEndRef = useRef(null);
   const { sidebarOpen, setSidebarOpen } = useContext(SidebarContext);
   const { user } = useContext(AuthContext);
@@ -54,40 +57,97 @@ const App = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const processMessages = (chatMessages) => {
+    const processed = [];
+    if (Array.isArray(chatMessages)) {
+      chatMessages.forEach((msg) => {
+        if (msg.prompt) {
+          processed.push({
+            text: msg.prompt,
+            isUser: true,
+            timestamp: msg.timestamp || new Date().toISOString(),
+            isMedical: msg.isMedical || false,
+          });
+        }
+        if (msg.response) {
+          processed.push({
+            text: msg.response,
+            isUser: false,
+            timestamp: msg.timestamp || new Date().toISOString(),
+            isMedical: msg.isMedical || false,
+            references: msg.references || [],
+          });
+        }
+        if (msg.text) {
+          processed.push({
+            text: msg.text,
+            isUser: msg.isUser || false,
+            timestamp: msg.timestamp || new Date().toISOString(),
+            isMedical: msg.isMedical || false,
+            references: msg.references || [],
+          });
+        }
+      });
+    }
+    return processed;
+  };
+
+  const fetchChatHistory = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/history", {
+        credentials: "include",
+      });
+      const data = await response.json();
+      console.log("Raw chat history data:", data);
+
+      if (Array.isArray(data)) {
+        const history = data
+          .map((chat) => {
+            if (!chat || typeof chat !== "object") {
+              console.warn("Invalid chat object:", chat);
+              return null;
+            }
+
+            const chatId = chat.sessionId || chat._id || chat.id;
+            if (!chatId) {
+              console.warn("Chat missing ID:", chat);
+              return null;
+            }
+
+            const messages = processMessages(chat.messages);
+            console.log("Processed messages for chat:", chatId, messages);
+
+            if (messages.length > 0) {
+              return {
+                id: chatId,
+                sessionId: chatId,
+                messages: messages,
+                timestamp:
+                  chat.updatedAt || chat.createdAt || new Date().toISOString(),
+                title:
+                  chat.title || messages[0]?.text?.slice(0, 30) || "New Chat",
+                isMedical: chat.isMedical || false,
+              };
+            }
+            return null;
+          })
+          .filter(Boolean);
+
+        console.log("Processed chat history:", history);
+        setChatSessions(history);
+      }
+    } catch (error) {
+      console.error("Error fetching chat history:", error);
+      setChatSessions([]);
+    }
+  };
+
   useEffect(() => {
     if (!user) {
       setMessages([]);
       setChatSessions([]);
       return;
     }
-
-    const fetchChatHistory = async () => {
-      try {
-        const response = await fetch("http://localhost:5000/api/history", {
-          credentials: "include",
-        });
-        const data = await response.json();
-
-        if (Array.isArray(data)) {
-          const history = data.map((chat) => ({
-            id: chat._id || chat.timestamp,
-            messages: chat.messages || [
-              { text: chat.prompt, isUser: true, timestamp: chat.timestamp },
-              { text: chat.response, isUser: false, timestamp: chat.timestamp },
-            ],
-            timestamp: chat.timestamp,
-            title: chat.title || chat.prompt?.slice(0, 30) || "New Chat",
-          }));
-          setChatSessions(history);
-        } else {
-          console.error("Fetched data is not an array:", data);
-          setChatSessions([]);
-        }
-      } catch (error) {
-        console.error("Error fetching chat history:", error);
-        setChatSessions([]);
-      }
-    };
 
     fetchChatHistory();
 
@@ -104,26 +164,72 @@ const App = () => {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log("WebSocket message received:", message);
+
           if (message.type === "CHAT_UPDATE") {
             if (message.data.action === "SAVE") {
               if (message.data.chat.id !== activeSessionId) {
                 debouncedUpdateSessions((prev) => {
-                  if (message.data.chat.messages.length === 0) return prev;
+                  const chat = message.data.chat;
+                  const chatId = chat.sessionId || chat._id || chat.id;
+
+                  if (!chatId) {
+                    console.warn("Chat missing ID:", chat);
+                    return prev;
+                  }
+
+                  const messages = processMessages(chat.messages);
+                  if (messages.length === 0) {
+                    console.warn("No valid messages in chat:", chat);
+                    return prev;
+                  }
+
+                  const processedChat = {
+                    id: chatId,
+                    sessionId: chatId,
+                    messages: messages,
+                    timestamp:
+                      chat.updatedAt ||
+                      chat.createdAt ||
+                      new Date().toISOString(),
+                    title:
+                      chat.title ||
+                      messages[0]?.text?.slice(0, 30) ||
+                      "New Chat",
+                    isMedical: chat.isMedical || false,
+                  };
+
+                  console.log("Processed WebSocket chat:", processedChat);
+
                   const exists = prev.some(
-                    (c) => c.id === message.data.chat.id
+                    (c) => c.id === chatId || c.sessionId === chatId
                   );
-                  return exists
-                    ? prev.map((c) =>
-                        c.id === message.data.chat.id ? message.data.chat : c
-                      )
-                    : [message.data.chat, ...prev].filter(
-                        (s) => s.messages.length > 0
-                      );
+                  if (exists) {
+                    return prev.map((c) =>
+                      c.id === chatId || c.sessionId === chatId
+                        ? processedChat
+                        : c
+                    );
+                  } else {
+                    return [processedChat, ...prev];
+                  }
                 });
               }
             } else if (message.data.action === "DELETE") {
+              const sessionIdToDelete = message.data.sessionId;
+              console.log("Deleting session:", sessionIdToDelete);
+
+              if (!sessionIdToDelete) {
+                console.warn("No session ID provided for deletion");
+                return;
+              }
+
               debouncedUpdateSessions((prev) =>
-                prev.filter((c) => c.id !== message.data.id)
+                prev.filter(
+                  (c) =>
+                    c.id !== sessionIdToDelete &&
+                    c.sessionId !== sessionIdToDelete
+                )
               );
             }
           }
@@ -144,7 +250,7 @@ const App = () => {
         const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
         setTimeout(() => {
           setWsReconnectAttempts((prev) => prev + 1);
-          connectWebSocket();
+          setupWebSocket();
         }, delay);
       };
     };
@@ -176,43 +282,92 @@ const App = () => {
     setMessages(updatedMessages);
     setPrompt("");
     setIsLoading(true);
+    setFallbackToGemini(false);
 
     try {
-      const apiKey = import.meta.env.VITE_API_KEY;
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
+      let botReply;
+      let references = [];
+      const isMedical = isMedicalQuery(prompt);
+
+      if (isMedical) {
+        try {
+          const medicalResponse = await fetch(
+            "http://localhost:5000/api/medical",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+              },
+              body: JSON.stringify({
+                prompt,
+                sessionId: activeSessionId || null,
+              }),
+              credentials: "include",
+            }
+          );
+
+          const medicalData = await medicalResponse.json();
+
+          if (!medicalResponse.ok) {
+            if (medicalData.shouldFallback) {
+              console.log("Medical API suggested fallback:", medicalData.error);
+              setFallbackToGemini(true);
+              // Don't throw, let it fall through to Gemini
+            } else {
+              throw new Error(
+                medicalData.error ||
+                  `Medical API responded with ${medicalResponse.status}`
+              );
+            }
+          } else if (medicalData.error) {
+            throw new Error(medicalData.error);
+          } else {
+            botReply = medicalData.text;
+            references = medicalData.references || [];
+          }
+        } catch (medicalError) {
+          console.warn("Medical API failed:", medicalError.message);
+          setFallbackToGemini(true);
+          // Don't throw here, let it fall through to Gemini
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
       }
 
-      const data = await response.json();
+      if (!isMedical || fallbackToGemini || !botReply) {
+        const apiKey = import.meta.env.VITE_API_KEY;
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+            }),
+          }
+        );
 
-      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        throw new Error("Invalid response format from API");
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        botReply =
+          data.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "I couldn't generate a response. Please try again.";
       }
 
-      const botReply = data.candidates[0].content.parts[0].text;
       const botMessage = {
         text: botReply,
         isUser: false,
         timestamp: new Date().toISOString(),
+        isMedical: isMedical && !fallbackToGemini,
+        references,
       };
 
       const finalMessages = [...updatedMessages, botMessage];
       setMessages(finalMessages);
 
       setLoadingStates((prev) => ({ ...prev, saving: true }));
-
-
       const saveResponse = await fetch("http://localhost:5000/api/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,21 +375,19 @@ const App = () => {
           prompt: userMessage.text,
           response: botReply,
           sessionId: activeSessionId || null,
+          isMedical: isMedical && !fallbackToGemini,
+          references,
         }),
         credentials: "include",
       });
 
       const saveData = await saveResponse.json();
-
       if (saveData.isNew) {
         setActiveSessionId(saveData.sessionId);
         setIsNewChat(false);
       }
     } catch (error) {
       console.error("Error:", error);
-      setMessages((prev) =>
-        prev.filter((m) => m.timestamp !== userMessage.timestamp)
-      );
       setError({
         message: "Failed to send message",
         details: error.message,
@@ -243,6 +396,93 @@ const App = () => {
     } finally {
       setIsLoading(false);
       setLoadingStates((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
+  const handleDeleteChat = async (sessionId) => {
+    if (!sessionId) {
+      console.error("No sessionId provided for deletion");
+      setError({
+        message: "Failed to delete chat",
+        details: "No session ID provided",
+      });
+      return;
+    }
+
+    console.log("Attempting to delete session:", sessionId);
+
+    const sessionToDelete = chatSessions.find(
+      (session) => session.id === sessionId || session.sessionId === sessionId
+    );
+
+    if (!sessionToDelete) {
+      console.error("Session not found with ID:", sessionId);
+      setError({
+        message: "Failed to delete chat",
+        details: "Chat session not found",
+      });
+      return;
+    }
+
+    const actualSessionId = sessionToDelete.sessionId || sessionToDelete.id;
+    console.log("Found session to delete:", sessionToDelete);
+
+    setDeletingSessionIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(actualSessionId);
+      return newSet;
+    });
+
+    try {
+      // First delete from database
+      const response = await fetch(`http://localhost:5000/api/delete`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: actualSessionId,
+        }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(
+          data.message || `Server responded with ${response.status}`
+        );
+      }
+
+      // Then update UI state
+      setChatSessions((prev) => {
+        const updatedSessions = prev.filter(
+          (s) => s.id !== actualSessionId && s.sessionId !== actualSessionId
+        );
+        return updatedSessions;
+      });
+
+      // If the deleted session was active, reset the chat
+      if (activeSessionId === actualSessionId) {
+        setMessages([]);
+        setActiveSessionId(null);
+        setIsNewChat(true);
+      }
+
+      console.log("Successfully deleted chat with ID:", actualSessionId);
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      setError({
+        message: "Failed to delete chat",
+        details: error.message,
+        retry: () => handleDeleteChat(sessionId),
+      });
+    } finally {
+      setDeletingSessionIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(actualSessionId);
+        return newSet;
+      });
     }
   };
 
@@ -261,15 +501,20 @@ const App = () => {
       Previous: [],
     };
 
+    // Sort sessions by timestamp in descending order
     const sortedSessions = [...sessionsArray].sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
     );
 
     sortedSessions.forEach((session) => {
       const sessionDate = new Date(session.timestamp);
-      if (sessionDate.toDateString() === today.toDateString()) {
+      const sessionDateStr = sessionDate.toDateString();
+      const todayStr = today.toDateString();
+      const yesterdayStr = yesterday.toDateString();
+
+      if (sessionDateStr === todayStr) {
         groupedSessions.Today.push(session);
-      } else if (sessionDate.toDateString() === yesterday.toDateString()) {
+      } else if (sessionDateStr === yesterdayStr) {
         groupedSessions.Yesterday.push(session);
       } else if (sessionDate > lastFiveDays) {
         groupedSessions["Last 5 Days"].push(session);
@@ -278,111 +523,45 @@ const App = () => {
       }
     });
 
+    // Remove empty categories
+    Object.keys(groupedSessions).forEach((category) => {
+      if (groupedSessions[category].length === 0) {
+        delete groupedSessions[category];
+      }
+    });
+
     return groupedSessions;
   }, []);
 
   const handleNewChat = () => {
-    if (messages.length > 0) {
-      const newSession = {
-        id: Date.now().toString(),
-        messages: [...messages],
-        timestamp: new Date().toISOString(),
-        title: messages[0]?.text?.slice(0, 30) || "New Chat",
-      };
-      setChatSessions((prev) => [newSession, ...prev]);
-    }
     setMessages([]);
     setActiveSessionId(null);
     setIsNewChat(true);
   };
 
   const handleLoadChat = (session) => {
-    if (session.messages.length >= maxMessagesPerSession * 2) {
-      alert(
-        "This chat session has reached the maximum message limit. Please start a new chat."
-      );
+    console.log("Loading chat session:", session);
+
+    if (!session || !session.messages) {
+      console.error("Invalid session data:", session);
+      setError({
+        message: "Failed to load chat",
+        details: "Invalid chat session data",
+      });
       return;
     }
-    setActiveSessionId(session.id);
-    setMessages(session.messages);
+
+    const sessionId = session.sessionId || session.id;
+    console.log("Setting active session ID:", sessionId);
+
+    const messages = processMessages(session.messages);
+    console.log("Formatted messages:", messages);
+
+    setActiveSessionId(sessionId);
+    setMessages(messages);
     setIsNewChat(false);
   };
-  const handleDeleteChat = async (index, category) => {
-    const groupedSessions = groupChatSessionsByDate(chatSessions);
-  
-    // Check if category exists in groupedSessions
-    if (!groupedSessions[category] || !groupedSessions[category][index]) {
-      console.error("Invalid category or index");
-      return;
-    }
-  
-    const sessionToDelete = groupedSessions[category][index];
-  
-    // Update UI by removing the deleted session
-    setChatSessions((prev) => prev.filter((s) => s.id !== sessionToDelete.id));
-  
-    // If the active session is deleted, clear messages and set active session to null
-    if (activeSessionId === sessionToDelete.id) {
-      setMessages([]);
-      setActiveSessionId(null);
-    }
-  
-    setLoadingStates((prev) => ({ ...prev, deleting: true }));
-  
-    try {
-      const response = await fetch("http://localhost:5000/api/delete", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: sessionToDelete.id,
-        }),
-        credentials: "include",
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok || !data.success) {
-        setChatSessions((prev) =>
-          [...prev, sessionToDelete].sort(
-            (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
-          )
-        );
-  
-        throw new Error(data.message || "Failed to delete chat");
-      }
-    } catch (error) {
-      console.error("Error deleting chat:", error);
-  
-      setError({
-        message: "Failed to delete chat",
-        details: error.message,
-        retry: async () => {
-          const maxRetries = 3; // Set a retry limit if needed
-          let retries = 0;
-  
-          while (retries < maxRetries) {
-            retries++;
-            try {
-              await handleDeleteChat(index, category);
-              return; // If successful, break out of the loop
-            } catch (err) {
-              console.log(`Retry attempt ${retries} failed`);
-            }
-          }
-          setError((prev) => ({
-            ...prev,
-            message: "Max retry attempts reached. Please try again later.",
-          }));
-        },
-      });
-    } finally {
-      setLoadingStates((prev) => ({ ...prev, deleting: false }));
-    }
-};
 
-  
   const groupedSessions = groupChatSessionsByDate(chatSessions);
 
   return (
@@ -402,6 +581,7 @@ const App = () => {
                   handleLoadChat={handleLoadChat}
                   handleDeleteChat={handleDeleteChat}
                   loadingStates={loadingStates}
+                  deletingSessionIds={deletingSessionIds}
                   activeSessionId={activeSessionId}
                   isNewChat={isNewChat && messages.length === 0}
                 />
@@ -463,16 +643,48 @@ const App = () => {
                               className={`inline-block p-3 rounded-lg max-w-3xl transition duration-300 shadow-md ${
                                 message.isUser
                                   ? "bg-blue-600 text-white"
-                                  : "bg-gray-700 text-gray-200"
+                                  : message.isMedical
+                                    ? "bg-green-800 text-gray-200"
+                                    : "bg-gray-700 text-gray-200"
                               }`}
                             >
                               <div className="whitespace-pre-wrap">
                                 {message.text}
                               </div>
+
+                              {message.references &&
+                                message.references.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-500">
+                                    <h4 className="text-sm font-semibold mb-1">
+                                      Medical References:
+                                    </h4>
+                                    <ul className="text-xs space-y-1">
+                                      {message.references.map((ref, idx) => (
+                                        <li key={idx}>
+                                          <a
+                                            href={ref.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-300 hover:underline"
+                                          >
+                                            {ref.title} ({ref.journal},{" "}
+                                            {ref.pubdate})
+                                          </a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
                               <div className="text-xs text-gray-400 mt-1">
                                 {new Date(
                                   message.timestamp
                                 ).toLocaleTimeString()}
+                                {message.isMedical && (
+                                  <span className="ml-2 text-green-300">
+                                    ✓ Verified Medical Source
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>

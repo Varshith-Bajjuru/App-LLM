@@ -1,5 +1,40 @@
 const mongoose = require("mongoose");
 
+const referenceSchema = new mongoose.Schema(
+  {
+    title: String,
+    authors: [String],
+    journal: String,
+    pubdate: String,
+    pmid: String,
+    url: String,
+  },
+  { _id: false }
+);
+
+const messageSchema = new mongoose.Schema(
+  {
+    prompt: {
+      type: String,
+      required: true,
+    },
+    response: {
+      type: String,
+      required: true,
+    },
+    isMedical: {
+      type: Boolean,
+      default: false,
+    },
+    references: [referenceSchema],
+    timestamp: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const chatSchema = new mongoose.Schema({
   sessionId: {
     type: String,
@@ -7,22 +42,7 @@ const chatSchema = new mongoose.Schema({
     unique: true,
     index: true,
   },
-  messages: [
-    {
-      prompt: {
-        type: String,
-        required: true,
-      },
-      response: {
-        type: String,
-        required: true,
-      },
-      timestamp: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-  ],
+  messages: [messageSchema],
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -32,6 +52,11 @@ const chatSchema = new mongoose.Schema({
   title: {
     type: String,
     default: "New Chat",
+  },
+  isMedical: {
+    type: Boolean,
+    default: false,
+    index: true,
   },
   createdAt: {
     type: Date,
@@ -45,7 +70,14 @@ const chatSchema = new mongoose.Schema({
   },
 });
 
-// Add compound index to prevent duplicates
-chatSchema.index({ sessionId: 1, userId: 1 }, { unique: true });
+chatSchema.pre("save", function (next) {
+  this.updatedAt = Date.now();
+
+  if (this.isModified("messages")) {
+    this.isMedical = this.messages.some((msg) => msg.isMedical);
+  }
+
+  next();
+});
 
 module.exports = mongoose.model("Chat", chatSchema);

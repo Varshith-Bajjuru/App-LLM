@@ -13,6 +13,8 @@ app.use(
   cors({
     origin: "http://localhost:5173",
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
   })
 );
 
@@ -21,9 +23,11 @@ app.use(cookieParser());
 
 const chatRoutes = require("./routes/chatRoute");
 const authRoutes = require("./routes/authRoute");
+const medicalRoutes = require("./routes/medicalRoute");
 
-app.use("/api", chatRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api", chatRoutes);
+app.use("/api/medical", medicalRoutes);
 
 mongoose
   .connect(process.env.MONGO_URI)

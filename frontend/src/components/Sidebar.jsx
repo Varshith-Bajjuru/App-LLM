@@ -7,6 +7,7 @@ const Sidebar = ({
   handleLoadChat,
   handleDeleteChat,
   loadingStates,
+  deletingSessionIds,
   activeSessionId,
   isNewChat,
 }) => {
@@ -19,10 +20,17 @@ const Sidebar = ({
 
   const getSessionTitle = (session) => {
     return (
-      session.title ||
-      session.messages?.find((m) => m.isUser)?.text?.slice(0, 30) ||
-      "New Chat"
+      session.title || session.messages?.[0]?.text?.slice(0, 30) || "New Chat"
     );
+  };
+
+  // Function to safely get session ID
+  const getSessionId = (session) => {
+    const id = session.sessionId || session.id;
+    if (!id) {
+      console.warn("Session missing ID:", session);
+    }
+    return id;
   };
 
   return (
@@ -77,19 +85,20 @@ const Sidebar = ({
       </div>
 
       <div className="chat-history flex-1 overflow-y-auto p-3">
-        {Object.entries(chatSessions).map(
-          ([category, sessions]) =>
-            sessions.length > 0 && (
-              <div key={category} className="mb-4">
-                <h3 className="text-xs font-semibold mb-2 text-gray-400 uppercase tracking-wider">
-                  {category}
-                </h3>
-                <ul>
-                  {sessions.map((session, index) => (
+        {Object.entries(chatSessions).map(([category, sessions]) =>
+          sessions.length > 0 ? (
+            <div key={`category-${category}`} className="mb-4">
+              <h3 className="text-xs font-semibold mb-2 text-gray-400 uppercase tracking-wider">
+                {category}
+              </h3>
+              <ul>
+                {sessions.map((session, index) => {
+                  const sessionId = getSessionId(session);
+                  return (
                     <li
-                      key={session.id}
+                      key={`${category}-${sessionId || index}`}
                       className={`chat-item p-2 hover:bg-gray-700 rounded-lg flex justify-between items-center text-gray-300 hover:text-white mb-1 transition-colors ${
-                        activeSessionId === session.id && !isNewChat
+                        activeSessionId === sessionId && !isNewChat
                           ? "bg-gray-700"
                           : ""
                       }`}
@@ -98,7 +107,8 @@ const Sidebar = ({
                         onClick={() => handleLoadChat(session)}
                         className="flex-1 text-left truncate"
                         disabled={
-                          loadingStates.deleting || loadingStates.loadingChat
+                          deletingSessionIds.has(sessionId) ||
+                          loadingStates.loadingChat
                         }
                         title={getSessionTitle(session)}
                       >
@@ -107,13 +117,23 @@ const Sidebar = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteChat(index, category);
+                          if (sessionId) {
+                            console.log("Deleting session:", sessionId);
+                            handleDeleteChat(sessionId);
+                          } else {
+                            console.error(
+                              "No valid session ID found for deletion:",
+                              session
+                            );
+                          }
                         }}
                         className="delete-button p-1 hover:bg-gray-600 rounded text-red-400 hover:text-red-300 ml-2 transition-colors"
-                        disabled={loadingStates.deleting}
+                        disabled={
+                          !sessionId || deletingSessionIds.has(sessionId)
+                        }
                         aria-label="Delete chat"
                       >
-                        {loadingStates.deleting ? (
+                        {deletingSessionIds.has(sessionId) ? (
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             className="h-4 w-4 animate-spin"
@@ -152,10 +172,11 @@ const Sidebar = ({
                         )}
                       </button>
                     </li>
-                  ))}
-                </ul>
-              </div>
-            )
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null
         )}
       </div>
       <div className="p-3 border-t border-gray-700">

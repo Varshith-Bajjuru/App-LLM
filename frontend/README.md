@@ -1,44 +1,131 @@
-# AI Chat Bot
+# React-App-LLM Frontend
 
-This guide will help you clone and run the AI Chat Bot project locally.
+A modern React-based frontend for a Large Language Model (LLM) application with medical query capabilities.
 
-## Prerequisites
+## Features
 
-Ensure you have the following installed on your system:
+- Real-time chat interface with LLM
+- Medical query detection and specialized responses
+- Chat history management
+- WebSocket integration for real-time updates
+- Responsive design
+- Authentication integration
+- Medical reference handling
 
-- [Node.js](https://nodejs.org/) (Latest LTS version recommended)
-- [Git](https://git-scm.com/)
+## Tech Stack
 
-## Clone the Repository
+- React.js
+- Vite
+- WebSocket
+- Tailwind CSS
+- React Icons
 
-```sh
-git clone https://github.com/Varshith-Bajjuru/AI-chat-Bot.git
+## Project Structure
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── Chat.jsx
+│   │   ├── Sidebar.jsx
+│   │   └── Message.jsx
+│   ├── utils/
+│   │   └── medicalDetector.js
+│   ├── App.jsx
+│   └── main.jsx
+├── public/
+└── package.json
 ```
 
-## Navigate to the Project Directory
+## Setup Instructions
 
-```sh
-cd AI-chat-Bot
-```
+1. Install dependencies:
 
-## Install Dependencies
-
-```sh
+```bash
 npm install
 ```
 
-## Start the Development Server
+2. Create a `.env` file in the root directory with:
 
-```sh
+```env
+VITE_API_KEY=your_gemini_api_key
+```
+
+3. Start the development server:
+
+```bash
 npm run dev
 ```
 
-## Open in Browser
+## Key Components
 
-Once the server is running, open your browser and go to:
+### App.jsx
 
-```
-http://localhost:3000
-```
+- Main application component
+- Handles chat state management
+- Manages WebSocket connections
+- Processes medical queries
+- Handles chat history
 
-Enjoy building with AI Chat Bot! 🎉
+### Sidebar.jsx
+
+- Displays chat history
+- Manages chat sessions
+- Handles chat deletion
+- Groups chats by date
+
+### Chat.jsx
+
+- Renders chat interface
+- Handles message input
+- Displays chat messages
+- Manages message formatting
+
+### Message.jsx
+
+- Renders individual messages
+- Handles medical references
+- Formats message content
+- Manages message styling
+
+## API Integration
+
+### Medical API
+
+- Detects medical queries
+- Provides specialized medical responses
+- Handles medical references
+- Falls back to Gemini API when needed
+
+### Gemini API
+
+- Handles general queries
+- Provides LLM responses
+- Manages conversation context
+- Handles error cases
+
+## State Management
+
+- Uses React hooks for state management
+- Maintains chat history
+- Manages active sessions
+- Handles real-time updates
+
+## Error Handling
+
+- Graceful fallback to Gemini API
+- User-friendly error messages
+- WebSocket reconnection
+- Session management
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+MIT License
