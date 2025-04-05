@@ -262,6 +262,35 @@ const App = () => {
     };
   }, [user, activeSessionId, debouncedUpdateSessions]);
 
+  
+const API_URL = 'https://api-inference.huggingface.co/models/Ganesh19128734/fine-tuned-gpt2';
+const HF_API_KEY = import.meta.env.VITE_API_KEY;
+
+async function queryModel(prompt) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${HF_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 100,
+        temperature: 0.7,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Error:', response.statusText);
+    return;
+  }
+
+  const result = await response.json();
+  console.log('🧠 Response:', result[0]?.generated_text);
+}
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return;
