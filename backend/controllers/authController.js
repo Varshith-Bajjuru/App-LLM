@@ -149,7 +149,6 @@ exports.refreshToken = async (req, res) => {
 };
 
 exports.verifyEmail = async (req, res) => {
-  // Get token from either query params (GET) or body (POST)
   const token = req.query.token || req.body.token;
 
   if (!token) {
@@ -176,7 +175,6 @@ exports.verifyEmail = async (req, res) => {
       });
     }
 
-    // Update user verification status
     user.isVerified = true;
     user.verificationToken = undefined;
     user.verificationTokenExpiry = undefined;
@@ -249,7 +247,6 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-// Add a resend verification email endpoint
 exports.resendVerification = async (req, res) => {
   const { email } = req.body;
 
@@ -264,7 +261,6 @@ exports.resendVerification = async (req, res) => {
       return res.status(400).json({ message: "Email is already verified" });
     }
 
-    // Generate new verification token
     const verificationToken = jwt.sign(
       { email },
       process.env.JWT_VERIFICATION_TOKEN,
@@ -275,7 +271,6 @@ exports.resendVerification = async (req, res) => {
     user.verificationTokenExpiry = Date.now() + 24 * 60 * 60 * 1000;
     await user.save();
 
-    // Send new verification email
     await EmailService.sendVerificationEmail(email, verificationToken);
 
     res.status(200).json({
