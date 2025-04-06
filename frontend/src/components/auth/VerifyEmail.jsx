@@ -17,7 +17,6 @@ const VerifyEmail = () => {
       }
 
       try {
-        // First try GET request
         let response = await fetch(
           `http://localhost:5000/api/auth/verify-email?token=${token}`,
           {
@@ -28,7 +27,6 @@ const VerifyEmail = () => {
           }
         );
 
-        // If GET fails, try POST
         if (!response.ok && response.status === 404) {
           response = await fetch(
             "http://localhost:5000/api/auth/verify-email",
@@ -49,7 +47,6 @@ const VerifyEmail = () => {
           setMessage(
             data.message || "Email verified successfully! You can now log in."
           );
-          // Redirect to login after 3 seconds
           setTimeout(() => {
             navigate("/login");
           }, 3000);
@@ -100,7 +97,6 @@ const VerifyEmail = () => {
           {message}
         </p>
 
-        {/* Action Buttons */}
         {status === "error" && (
           <div className="mt-4 space-y-2">
             <button
