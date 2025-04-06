@@ -11,13 +11,14 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
     try {
       const response = await fetch("http://localhost:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
-        credentials: "include", // Include cookies in the request
+        credentials: "include",
       });
 
       const data = await response.json();
@@ -26,7 +27,22 @@ const Login = () => {
         setUser(data.user);
         navigate("/");
       } else {
-        setError(data.message || "Login failed");
+        if (data.needsVerification) {
+          // Show special message for unverified users
+          setError(
+            <div>
+              <p className="text-yellow-500 mb-2">{data.message}</p>
+              <button
+                onClick={() => navigate("/verification-pending")}
+                className="text-blue-500 hover:underline text-sm"
+              >
+                Resend verification email
+              </button>
+            </div>
+          );
+        } else {
+          setError(data.message || "Login failed");
+        }
       }
     } catch (error) {
       setError("An error occurred. Please try again.");
@@ -39,7 +55,15 @@ const Login = () => {
         <h2 className="text-2xl font-bold mb-6 text-white text-center">
           Login
         </h2>
-        {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+        {error && (
+          <div className="mb-4 text-center">
+            {typeof error === "string" ? (
+              <p className="text-red-500 text-sm">{error}</p>
+            ) : (
+              error
+            )}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label
@@ -80,6 +104,11 @@ const Login = () => {
             Login
           </button>
         </form>
+        <div className="mt-4 text-center text-gray-400">
+          <a href="/forgot-password" className="text-blue-500 hover:underline">
+            Forgot Password?
+          </a>
+        </div>
         <p className="mt-4 text-center text-gray-400">
           Don't have an account?{" "}
           <a href="/register" className="text-blue-500 hover:underline">

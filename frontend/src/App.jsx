@@ -21,6 +21,11 @@ import Footer from "./components/footer/Footer";
 import Home from "./components/home/Home";
 import { debounce } from "lodash";
 import { isMedicalQuery } from "./utils/medicalDetector";
+import VerificationPending from "./components/auth/VerificationPending";
+import ForgotPassword from "./components/auth/ForgotPassword";
+import ResetPassword from "./components/auth/ResetPassword";
+import VerifyEmail from "./components/auth/VerifyEmail";
+import ReactMarkdown from "react-markdown";
 
 const App = () => {
   const [prompt, setPrompt] = useState("");
@@ -262,34 +267,34 @@ const App = () => {
     };
   }, [user, activeSessionId, debouncedUpdateSessions]);
 
-  
-const API_URL = 'https://api-inference.huggingface.co/models/Ganesh19128734/fine-tuned-gpt2';
-const HF_API_KEY = import.meta.env.VITE_API_KEY;
+  const API_URL =
+    "https://api-inference.huggingface.co/models/Ganesh19128734/fine-tuned-gpt2";
+  const HF_API_KEY = import.meta.env.VITE_API_KEY;
 
-async function queryModel(prompt) {
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HF_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: 100,
-        temperature: 0.7,
+  async function queryModel(prompt) {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${HF_API_KEY}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: 100,
+          temperature: 0.7,
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    console.error('Error:', response.statusText);
-    return;
+    if (!response.ok) {
+      console.error("Error:", response.statusText);
+      return;
+    }
+
+    const result = await response.json();
+    console.log("🧠 Response:", result[0]?.generated_text);
   }
-
-  const result = await response.json();
-  console.log('🧠 Response:', result[0]?.generated_text);
-}
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -371,6 +376,12 @@ async function queryModel(prompt) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 1024,
+              },
             }),
           }
         );
@@ -383,6 +394,9 @@ async function queryModel(prompt) {
         botReply =
           data.candidates?.[0]?.content?.parts?.[0]?.text ||
           "I couldn't generate a response. Please try again.";
+
+        // Format Gemini response for better readability
+        botReply = formatGeminiResponse(botReply);
       }
 
       const botMessage = {
@@ -426,6 +440,22 @@ async function queryModel(prompt) {
       setIsLoading(false);
       setLoadingStates((prev) => ({ ...prev, saving: false }));
     }
+  };
+
+  // Add this helper function to format Gemini responses
+  const formatGeminiResponse = (text) => {
+    // Add proper markdown formatting for lists if not present
+    text = text.replace(/^[•●○]/gm, "-"); // Convert bullet points to markdown list items
+
+    // Add proper markdown formatting for emphasis if not present
+    text = text.replace(/\b(Note|Important|Warning):/g, "**$1:**");
+
+    // Format code blocks if present
+    text = text.replace(/```(\w+)?\n([\s\S]+?)\n```/g, (_, lang, code) => {
+      return `\n\`\`\`${lang || ""}\n${code.trim()}\n\`\`\`\n`;
+    });
+
+    return text;
   };
 
   const handleDeleteChat = async (sessionId) => {
@@ -599,6 +629,10 @@ async function queryModel(prompt) {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verification-pending" element={<VerificationPending />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route
           path="/"
           element={
@@ -677,8 +711,40 @@ async function queryModel(prompt) {
                                     : "bg-gray-700 text-gray-200"
                               }`}
                             >
-                              <div className="whitespace-pre-wrap">
-                                {message.text}
+                              <div className="whitespace-pre-wrap prose prose-invert max-w-none">
+                                <ReactMarkdown
+                                  components={{
+                                    // Custom components for better formatting
+                                    p: ({ children }) => (
+                                      <p className="mb-2">{children}</p>
+                                    ),
+                                    ul: ({ children }) => (
+                                      <ul className="list-disc pl-4 mb-2">
+                                        {children}
+                                      </ul>
+                                    ),
+                                    ol: ({ children }) => (
+                                      <ol className="list-decimal pl-4 mb-2">
+                                        {children}
+                                      </ol>
+                                    ),
+                                    li: ({ children }) => (
+                                      <li className="mb-1">{children}</li>
+                                    ),
+                                    code: ({ inline, children }) =>
+                                      inline ? (
+                                        <code className="bg-gray-800 px-1 rounded">
+                                          {children}
+                                        </code>
+                                      ) : (
+                                        <pre className="bg-gray-800 p-2 rounded mt-2 mb-2 overflow-x-auto">
+                                          <code>{children}</code>
+                                        </pre>
+                                      ),
+                                  }}
+                                >
+                                  {message.text}
+                                </ReactMarkdown>
                               </div>
 
                               {message.references &&
