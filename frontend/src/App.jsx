@@ -293,7 +293,7 @@ const App = () => {
     }
 
     const result = await response.json();
-    console.log("🧠 Response:", result[0]?.generated_text);
+    console.log(" Response:", result[0]?.generated_text);
   }
 
   const handleSubmit = async (e) => {
@@ -347,7 +347,6 @@ const App = () => {
             if (medicalData.shouldFallback) {
               console.log("Medical API suggested fallback:", medicalData.error);
               setFallbackToGemini(true);
-              // Don't throw, let it fall through to Gemini
             } else {
               throw new Error(
                 medicalData.error ||
@@ -363,7 +362,6 @@ const App = () => {
         } catch (medicalError) {
           console.warn("Medical API failed:", medicalError.message);
           setFallbackToGemini(true);
-          // Don't throw here, let it fall through to Gemini
         }
       }
 
@@ -394,8 +392,6 @@ const App = () => {
         botReply =
           data.candidates?.[0]?.content?.parts?.[0]?.text ||
           "I couldn't generate a response. Please try again.";
-
-        // Format Gemini response for better readability
         botReply = formatGeminiResponse(botReply);
       }
 
@@ -442,15 +438,10 @@ const App = () => {
     }
   };
 
-  // Add this helper function to format Gemini responses
   const formatGeminiResponse = (text) => {
-    // Add proper markdown formatting for lists if not present
-    text = text.replace(/^[•●○]/gm, "-"); // Convert bullet points to markdown list items
-
-    // Add proper markdown formatting for emphasis if not present
+    text = text.replace(/^[•●○]/gm, "-"); 
     text = text.replace(/\b(Note|Important|Warning):/g, "**$1:**");
 
-    // Format code blocks if present
     text = text.replace(/```(\w+)?\n([\s\S]+?)\n```/g, (_, lang, code) => {
       return `\n\`\`\`${lang || ""}\n${code.trim()}\n\`\`\`\n`;
     });
@@ -493,7 +484,6 @@ const App = () => {
     });
 
     try {
-      // First delete from database
       const response = await fetch(`http://localhost:5000/api/delete`, {
         method: "DELETE",
         headers: {
@@ -513,7 +503,6 @@ const App = () => {
         );
       }
 
-      // Then update UI state
       setChatSessions((prev) => {
         const updatedSessions = prev.filter(
           (s) => s.id !== actualSessionId && s.sessionId !== actualSessionId
@@ -521,7 +510,6 @@ const App = () => {
         return updatedSessions;
       });
 
-      // If the deleted session was active, reset the chat
       if (activeSessionId === actualSessionId) {
         setMessages([]);
         setActiveSessionId(null);
@@ -560,7 +548,6 @@ const App = () => {
       Previous: [],
     };
 
-    // Sort sessions by timestamp in descending order
     const sortedSessions = [...sessionsArray].sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
     );
@@ -582,7 +569,6 @@ const App = () => {
       }
     });
 
-    // Remove empty categories
     Object.keys(groupedSessions).forEach((category) => {
       if (groupedSessions[category].length === 0) {
         delete groupedSessions[category];
