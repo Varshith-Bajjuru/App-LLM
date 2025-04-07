@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* Add these styles to your existing CSS */
 .prose {
   color: inherit;
   max-width: none;
@@ -60,7 +59,7 @@
   color: #60a5fa;
 }
 
-/* Add styles for special formatting */
+
 .prose blockquote {
   border-left: 3px solid #4b5563;
   padding-left: 1em;

@@ -8,7 +8,7 @@ A Node.js/Express.js backend for a Large Language Model (LLM) application with m
 - WebSocket integration for real-time updates
 - MongoDB integration for data persistence
 - JWT authentication
-- Medical API integration
+- Medical API integration(Hugging face finetunning model)
 - Chat history management
 - Real-time chat updates
 
