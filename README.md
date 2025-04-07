@@ -1,5 +1,11 @@
 # React-App-LLM Project Documentation
 
+Team Members
+23bds011-Bajjuru varshith
+23bds024-J Ganesh
+23bds033-M Jagadeeswar Reddy
+23bds015-B Harsha vardhan Reddy 
+23bds053-Izhaar Ahmed
 A full-stack application for a Large Language Model (LLM) with medical query capabilities.
 
 ## Table of Contents
