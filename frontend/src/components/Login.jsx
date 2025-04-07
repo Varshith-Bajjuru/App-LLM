@@ -28,7 +28,6 @@ const Login = () => {
         navigate("/");
       } else {
         if (data.needsVerification) {
-          // Show special message for unverified users
           setError(
             <div>
               <p className="text-yellow-500 mb-2">{data.message}</p>

@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const EmailService = require("../services/emailService");
 const rateLimit = require("express-rate-limit");
+const emailService = require("../services/emailService");
 
 exports.register = async (req, res) => {
   const { email, password } = req.body;
@@ -27,14 +28,26 @@ exports.register = async (req, res) => {
     });
 
     await user.save();
-    await EmailService.sendVerificationEmail(email, verificationToken);
 
-    res.status(201).json({
-      message:
-        "User registered successfully. Please check your email for verification.",
-    });
+    try {
+      await emailService.sendVerificationEmail(email, verificationToken);
+      res.status(201).json({
+        message:
+          "User registered successfully. Please check your email for verification.",
+      });
+    } catch (emailError) {
+      // If email fails, still create the user but inform them about email issue
+      console.error("Email service error:", emailError);
+      res.status(201).json({
+        message:
+          "User registered successfully but verification email failed. Please contact support.",
+      });
+    }
   } catch (error) {
-    res.status(500).json({ message: "Error registering user", error });
+    console.error("Registration error:", error);
+    res
+      .status(500)
+      .json({ message: "Error registering user", error: error.message });
   }
 };
 
@@ -149,10 +162,13 @@ exports.refreshToken = async (req, res) => {
 };
 
 exports.verifyEmail = async (req, res) => {
-  // Get token from either query params (GET) or body (POST)
-  const token = req.query.token || req.body.token;
+  const { token } = req.body;
+
+  // Add detailed logging
+  console.log("Received verification request with token:", token);
 
   if (!token) {
+    console.log("No token provided in request");
     return res.status(400).json({
       message: "Verification token is required",
       verified: false,
@@ -160,7 +176,14 @@ exports.verifyEmail = async (req, res) => {
   }
 
   try {
+    // Log the token being used for verification
+    console.log(
+      "Attempting to verify token with secret:",
+      process.env.JWT_VERIFICATION_TOKEN ? "Secret exists" : "Secret missing"
+    );
+
     const decoded = jwt.verify(token, process.env.JWT_VERIFICATION_TOKEN);
+    console.log("Token decoded successfully:", decoded);
 
     const user = await User.findOne({
       email: decoded.email,
@@ -169,6 +192,7 @@ exports.verifyEmail = async (req, res) => {
     });
 
     if (!user) {
+      console.log("No user found with token:", token);
       return res.status(400).json({
         message:
           "Invalid or expired verification token. Please request a new verification email.",
@@ -176,12 +200,12 @@ exports.verifyEmail = async (req, res) => {
       });
     }
 
-    // Update user verification status
     user.isVerified = true;
     user.verificationToken = undefined;
     user.verificationTokenExpiry = undefined;
     await user.save();
 
+    console.log("User verified successfully:", user.email);
     res.status(200).json({
       message: "Email verified successfully! You can now log in.",
       verified: true,
@@ -192,6 +216,7 @@ exports.verifyEmail = async (req, res) => {
       message:
         "Invalid verification token. Please try again or request a new verification email.",
       verified: false,
+      error: error.message,
     });
   }
 };

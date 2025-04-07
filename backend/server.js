@@ -3,6 +3,7 @@ const http = require("http");
 const WebSocket = require("ws");
 const jwt = require("jsonwebtoken");
 const cookie = require("cookie");
+const cors = require("cors");
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
@@ -126,5 +127,12 @@ process.on("SIGTERM", () => {
     });
   });
 });
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+  })
+);
 
 module.exports = server;

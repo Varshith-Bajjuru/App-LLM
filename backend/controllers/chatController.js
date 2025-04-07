@@ -12,7 +12,6 @@ exports.saveChat = async (req, res) => {
 
     let chat;
     if (sessionId) {
-      // Update existing session
       chat = await Chat.findOneAndUpdate(
         { sessionId, userId: req.user.id },
         {
@@ -21,14 +20,13 @@ exports.saveChat = async (req, res) => {
           },
           $set: {
             updatedAt: Date.now(),
-            title: prompt.slice(0, 30) || "New Chat", // Update title with latest prompt
+            title: prompt.slice(0, 30) || "New Chat",
           },
         },
-        { new: true, upsert: false } // Don't create new if not found
+        { new: true, upsert: false }
       );
 
       if (!chat) {
-        // Session not found, create new one
         const newSessionId = uuidv4();
         chat = new Chat({
           sessionId: newSessionId,
@@ -39,7 +37,6 @@ exports.saveChat = async (req, res) => {
         await chat.save();
       }
     } else {
-      // Create new session
       const newSessionId = uuidv4();
       chat = new Chat({
         sessionId: newSessionId,
@@ -50,7 +47,6 @@ exports.saveChat = async (req, res) => {
       await chat.save();
     }
 
-    // Broadcast update via WebSocket
     if (req.app.locals.broadcastUpdate) {
       req.app.locals.broadcastUpdate({
         action: chat.sessionId === sessionId ? "UPDATE" : "NEW",
@@ -130,7 +126,6 @@ exports.deleteChat = async (req, res) => {
       `Attempting to delete chat session: ${sessionId} for user: ${req.user.id}`
     );
 
-    // First check if the chat exists and is owned by the user
     const chat = await Chat.findOne({
       sessionId: sessionId,
       userId: req.user.id,
@@ -144,12 +139,10 @@ exports.deleteChat = async (req, res) => {
       });
     }
 
-    // Then proceed with deletion
     await Chat.deleteOne({ _id: chat._id });
 
     console.log(`Successfully deleted chat session: ${sessionId}`);
 
-    // Broadcast the deletion via WebSocket
     if (req.app.locals.broadcastUpdate) {
       req.app.locals.broadcastUpdate({
         action: "DELETE",

@@ -15,13 +15,12 @@ const Register = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
-        credentials: "include", // Include cookies in the request
+        credentials: "include",
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        // Redirect to the login page after successful registration
         navigate("/login");
       } else {
         setError(data.message || "Registration failed");

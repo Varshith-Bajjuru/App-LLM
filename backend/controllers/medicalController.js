@@ -39,7 +39,7 @@ exports.handleMedicalQuery = async (req, res) => {
 
     const articles = Object.values(summaryResponse.data.result)
       .slice(1)
-      .filter((article) => article.title); // Only include articles with titles
+      .filter((article) => article.title);
 
     if (articles.length === 0) {
       return res.status(404).json({
@@ -48,7 +48,6 @@ exports.handleMedicalQuery = async (req, res) => {
       });
     }
 
-    // Step 3: Format response
     let botResponse = "Here's what I found from medical research:\n\n";
 
     articles.forEach((article, index) => {
@@ -72,7 +71,6 @@ exports.handleMedicalQuery = async (req, res) => {
     botResponse +=
       "\n*This information is from PubMed and should not replace professional medical advice.*";
 
-    // Prepare chat data with references
     const chatData = {
       prompt,
       response: botResponse,
@@ -87,7 +85,6 @@ exports.handleMedicalQuery = async (req, res) => {
       })),
     };
 
-    // Save to database
     let chat;
     if (sessionId) {
       chat = await Chat.findOneAndUpdate(
@@ -96,7 +93,7 @@ exports.handleMedicalQuery = async (req, res) => {
           $push: { messages: chatData },
           $set: {
             updatedAt: Date.now(),
-            isMedical: true, // Mark entire chat as medical
+            isMedical: true,
           },
         },
         { new: true }
@@ -140,7 +137,6 @@ exports.handleMedicalQuery = async (req, res) => {
   } catch (error) {
     console.error("PubMed API error:", error.message);
 
-    // Fallback to Gemini
     res.status(503).json({
       error: "Medical service unavailable",
       shouldFallback: true,

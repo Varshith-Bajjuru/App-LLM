@@ -5,7 +5,7 @@ const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const navigate = useNavigate();
-  const [status, setStatus] = useState("verifying"); // 'verifying', 'success', 'error'
+  const [status, setStatus] = useState("verifying");
   const [message, setMessage] = useState("Verifying your email...");
 
   useEffect(() => {
@@ -17,7 +17,6 @@ const VerifyEmail = () => {
       }
 
       try {
-        // First try GET request
         let response = await fetch(
           `http://localhost:5000/api/auth/verify-email?token=${token}`,
           {
@@ -28,7 +27,6 @@ const VerifyEmail = () => {
           }
         );
 
-        // If GET fails, try POST
         if (!response.ok && response.status === 404) {
           response = await fetch(
             "http://localhost:5000/api/auth/verify-email",
@@ -49,7 +47,7 @@ const VerifyEmail = () => {
           setMessage(
             data.message || "Email verified successfully! You can now log in."
           );
-          // Redirect to login after 3 seconds
+
           setTimeout(() => {
             navigate("/login");
           }, 3000);
@@ -74,7 +72,6 @@ const VerifyEmail = () => {
           Email Verification
         </h2>
 
-        {/* Status Icon */}
         <div className="mb-4">
           {status === "verifying" && (
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
@@ -87,7 +84,6 @@ const VerifyEmail = () => {
           )}
         </div>
 
-        {/* Status Message */}
         <p
           className={`text-lg mb-4 ${
             status === "success"
@@ -99,8 +95,6 @@ const VerifyEmail = () => {
         >
           {message}
         </p>
-
-        {/* Action Buttons */}
         {status === "error" && (
           <div className="mt-4 space-y-2">
             <button

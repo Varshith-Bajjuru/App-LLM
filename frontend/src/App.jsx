@@ -24,7 +24,7 @@ import { isMedicalQuery } from "./utils/medicalDetector";
 import VerificationPending from "./components/auth/VerificationPending";
 import ForgotPassword from "./components/auth/ForgotPassword";
 import ResetPassword from "./components/auth/ResetPassword";
-import VerifyEmail from "./components/auth/VerifyEmail";
+import VerifyEmail from "./components/VerifyEmail";
 import ReactMarkdown from "react-markdown";
 
 const App = () => {
