@@ -38,9 +38,9 @@ backend/
 │   └── authRoute.js
 ├── middleware/
 │   ├── authToken.js
-│   └── errorHandler.js
-├── config/
-│   └── db.js
+│   
+├── services/
+│   └── emailService.js
 ├── app.js
 └── server.js
 ```
