@@ -25,15 +25,32 @@ A modern React-based frontend for a Large Language Model (LLM) application with 
 ```
 frontend/
 ├── src/
+│   ├── assets/
 │   ├── components/
-│   │   ├── Chat.jsx
-│   │   ├── Sidebar.jsx
-│   │   └── Message.jsx
+│   │   ├── auth/
+│   │   │   ├── ForgotPassword.jsx
+│   │   │   ├── ResetPassword.jsx
+│   │   │   ├── VerificationPending.jsx
+│   │   │   └── VerifyEmail.jsx
+│   │   ├── footer/
+│   │   │   └── Footer.jsx
+│   │   ├── header/
+│   │   │   └── Header.jsx
+│   │   ├── home/
+│   │   │   ├── Home.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── VerifyEmail.jsx
+│   ├── context/
+│   │   ├── AuthContext.jsx
+│   │   └── SidebarContext.jsx
 │   ├── utils/
 │   │   └── medicalDetector.js
 │   ├── App.jsx
+│   ├── index.css
 │   └── main.jsx
-├── public/
+├── .env
 └── package.json
 ```
 
